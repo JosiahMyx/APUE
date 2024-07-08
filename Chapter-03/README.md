@@ -215,3 +215,128 @@ write only, APPEND
 myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ ./3_14_1.out 5 5<>temp.foo
 read write
 ```
+
+练习
+3.1
+这里的unbuffered I/O指每次都调用系统调用，但是在实际写入文件之前，内核或者文件系统还是有buffer的
+
+3.2
+//TODO 暂时不清楚，怎么原子实现关闭+复制
+
+3.3
+![p3_3.jpg](p3_3.jpg "p3.3")
+F_SETFD修改文件描述符标志位，每个fd有自己的
+F_SETFL修改文件状态标志位，在file table中，多个fd1 fd2的共享
+测试如[p3.3](p3_3.c)
+```
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ ./p3_3.out 
+original
+fd1_fdf:0 fd1_fsf:32770
+fd2_fdf:0 fd2_fsf:32770
+fd3_fdf:0 fd3_fsf:32768
+after modify fd1 fdf
+fd1_fdf:1 fd1_fsf:32770
+fd2_fdf:0 fd2_fsf:32770
+fd3_fdf:0 fd3_fsf:32768
+after modify fd1 fsf
+fd1_fdf:1 fd1_fsf:33794
+fd2_fdf:0 fd2_fsf:33794
+fd3_fdf:0 fd3_fsf:32768
+```
+
+3.4
+int dup2(int oldfd, int newfd);
+如果fd是1，执行完后，0 1 2 都指向1的file table
+如果fd是3，执行完后，0 1 2 都指向3的file table，而且3自己也指向这个file table，这里的if就是为了关闭这个多的fd吧
+
+3.5
+这里以这个函数为例
+```c
+#include <unistd.h>
+#include <stdlib.h>
+
+int main(void)
+{
+    write(STDOUT_FILENO, "test test\n", 10);
+    write(STDERR_FILENO, "test err\n", 9);
+    exit(0);
+}
+```
+```
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ ./p3_5.out > outfile 2>&1
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ cat outfile 
+test test
+test err
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ rm outfile 
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ ./p3_5.out 2>&1 > outfile
+test err
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ cat outfile 
+test test
+
+默认情况，stdout和stderr都指向shell，
+第一个，先把STDOUT_FILENO指向outfile的file table，再把STDERR_FILENO指向STDOUT_FILENO指向的file table，最终STDOUT_FILENO和STDERR_FILENO都指向了outfile
+第二个，先把STDERR_FILENO指向STDOUT_FILENO指向的file table，再把STDOUT_FILENO指向outfile的file table，因此err的打印打在shell里，stdout的打印打到outfile
+```
+3.6
+先lseek，再read，是可以的
+但是O_APPEND的作用是每次write前先lessk到文件末尾，再write，所以不能lseek再修改以及存在的数据
+```c
+#include <unistd.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <stdio.h>
+
+int main()
+{
+    int fd;
+    off_t lseek_offset;
+    char buf[1024] = {0};
+    int read_len;
+
+    if ((fd = open("testfile", O_RDWR | O_APPEND)) < 0)
+    {
+        perror("open failed 1");
+        exit(-1);
+    }
+
+    if((lseek_offset = lseek(fd, 4, SEEK_SET)) != 4)
+    {
+        perror("lseek err 1");
+        exit(-1);
+    }
+
+    if ((read_len = read(fd, buf, 1)) < 0)
+    {
+        perror("read fail");
+        exit(-1);
+    }
+
+    if (write(STDOUT_FILENO, buf, 1) != 1)
+    {
+        perror("write fail 1");
+        exit(-1);
+    }
+    putchar('\n');
+
+    if((lseek_offset = lseek(fd, 5, SEEK_SET)) != 5)
+    {
+        perror("lseek err 2");
+        exit(-1);
+    }
+
+    if ((write(fd, "x", 1)) != 1)
+    {
+        perror("write fail 2");
+        exit(-1);
+    }
+
+    exit(0);
+}
+```
+```
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ cat testfile 
+0123456789myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ ./p3_6.out 
+4
+myx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ cat testfile 
+0123456789xmyx@myx-virtual-machine:~/myFiles/APUE/Chapter-03$ 
+```
