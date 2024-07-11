@@ -1,5 +1,3 @@
-[TOC]
-
 ## 实验环境
 ```
 myx@myx-virtual-machine:~/myFiles/APUE/Chapter-04$ uname -a
@@ -8,18 +6,19 @@ Linux myx-virtual-machine 5.4.0-187-generic #207-Ubuntu SMP Mon Jun 10 08:16:10 
 
 ## 4.6 文件和文件夹的所有权
 
-    我们使用open和create，包括shell中touch得到的文件属于哪个用于和组呢？
+我们使用open和create，包括shell中touch得到的文件属于哪个用于和组呢？ 
 
-    这里先讨论文件（不包括文件夹）
-    文件的user ID是当前进程的effective ID(有效用户ID)
-    文件的group ID分两种情况:（1）当前进程的group ID; （2）该文件所在文件夹的group ID
-    在我所用的Linux5.4.0的环境下:
-    (1)如果当前所在文件夹的set-group-ID 位设置了,则文件的group ID是当前文件夹得group ID
-    (2)否则是当前进程的effective ID
+这里先讨论文件（不包括文件夹）
+文件的user ID是当前进程的effective ID(有效用户ID)
+文件的group ID分两种情况:（1）当前进程的group ID; （2）该文件所在文件夹的group ID
+在我所用的Linux5.4.0的环境下:
+(1)如果当前所在文件夹的set-group-ID 位设置了,则文件的group ID是当前文件夹得group ID
+(2)否则是当前进程的effective ID
 
-    这里用到一个命令,如何给文件夹设置set-group-ID位
+这里用到一个命令,如何给文件夹设置set-group-ID位
 ``` chmod +s <file> ```
-    分别用两个用户(myx myx2)创建两个文件夹test1 test2, 并设置set-group-ID位
+
+分别用两个用户(myx myx2)创建两个文件夹test1 test2, 并设置set-group-ID位
 ```
 myx@myx-virtual-machine:~/APUE/APUE/Chapter-04$ stat test1 test2
   文件：test1
@@ -75,10 +74,10 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags);
 ```
 
 *mode*
-    F_OK    测试文件是否存在
-    R_OK    测试是否有权限读文件(同时也会测试文件是否存在)
-    W_OK    测试是否有权限写文件(同时也会测试文件是否存在)
-    X_OK    测试是否有权限执行文件(同时也会测试文件是否存在)
+F_OK    测试文件是否存在
+R_OK    测试是否有权限读文件(同时也会测试文件是否存在)
+W_OK    测试是否有权限写文件(同时也会测试文件是否存在)
+X_OK    测试是否有权限执行文件(同时也会测试文件是否存在)
 
 对于*access*是检查real user ID和real group ID是否有权限
 
@@ -187,4 +186,4 @@ myx@myx-virtual-machine:~/APUE/APUE/Chapter-04$
 这个例子最后, 进程的real user ID时普通用户(myx), effective user ID是root, 所以我们可以用读方式打开/etc/passwd(此时检查的是effective user ID的权限), 
 但是faccessat测试real user ID(myx)却没权限写这个文件
 
-**这里有个注意点:书上那个例子里的/etc/passwd的权限和我们环境的可能不一样, 所以运行效果和书上的也不一样**
+**这里有个注意点:书上那个例子里的/etc/passwd的权限和我们环境的可能不一样, 所以运行效果和书上的也不一样(例如我的环境other是有读权限的)**
