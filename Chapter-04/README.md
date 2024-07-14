@@ -410,3 +410,144 @@ mv: 无法将'test_for_sticky' 移动至'test_for_sticky1': 不允许的操作
 
 ## 4.11 chown fchown fchownat lchown
 
+```
+#include <unistd.h>
+int chown(const char *pathname, uid_t owner, gid_t group);
+int fchown(int fd, uid_t owner, gid_t group);
+int fchownat(int fd, const char *pathname, uid_t owner, gid_t group， int flag);
+int lchown(const char *pathname, uid_t owner, gid_t group);
+返回值: 成功0, 失败-1
+```
+上面四个函数可以修改文件的owner和group，如果设置为-1，意思是不变
+
+对于符号链接, chown和fchown修改被链接的文件本身, lchown修改链接本身, fchownat如果flag是AT_SYMLINK_NOFOLLOW则修改链接本身否则修改被链接的文件
+
+某个文件如果定义了_POSIX_CHOWN_RESTRICTED, 那么只有root权限才能修改文件的user ID, 要修改组用ID进程的effective ID就是文件user ID, 且只能修改成
+进程的effective group ID或者附属组ID
+
+如果一个非root权限进程调用了这四个函数, 并且成功了, 那么set-user-ID 和 set-group-ID会被清除
+
+**实际上我试了一下，我的环境(Linux5.4)上普通用户无法修改文件的user ID和group ID, 即使你是文件的owner**
+```
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ll test_file 
+-rwSrwSr-- 1 myx myx 0 7月  14 15:57 test_file
+myx@myx-virtual-machine:~/APUE/Chapter-04$ whoami
+myx
+myx@myx-virtual-machine:~/APUE/Chapter-04$ id myx
+用户id=1000(myx) 组id=1000(myx) 组=1000(myx),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),116(lpadmin),126(sambashare),1002(myx_user)
+myx@myx-virtual-machine:~/APUE/Chapter-04$ id myx2
+用户id=1001(myx2) 组id=1001(myx2) 组=1001(myx2),1002(myx_user)
+myx@myx-virtual-machine:~/APUE/Chapter-04$ 
+
+myx@myx-virtual-machine:~/APUE/Chapter-04$ chown myx2 test_file 
+chown: 正在更改'test_file' 的所有者: 不允许的操作
+myx@myx-virtual-machine:~/APUE/Chapter-04$ chgrp myx_user test_file 
+chgrp: 正在更改'test_file' 的所属组: 不允许的操作
+```
+
+## 4.12 File Size
+
+struct stat中有一个属性 st_size
+只对普通文件、文件夹、符号链接有意义
+
+对于普通文件，大小可以为0
+```
+myx@myx-virtual-machine:~/APUE/Chapter-04$ touch empty_file
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ll empty_file 
+-rw-rw-r-- 1 myx myx 0 7月  14 21:00 empty_file
+myx@myx-virtual-machine:~/APUE/Chapter-04$ stat empty_file 
+  File: empty_file
+  Size: 0               Blocks: 0          IO Block: 4096   regular empty file
+Device: 801h/2049d      Inode: 525182      Links: 1
+Access: (0664/-rw-rw-r--)  Uid: ( 1000/     myx)   Gid: ( 1000/     myx)
+Access: 2024-07-14 21:00:17.062817352 +0800
+Modify: 2024-07-14 21:00:17.062817352 +0800
+Change: 2024-07-14 21:00:17.062817352 +0800
+ Birth: -
+```
+这里还有2个要注意的: Blocks是占用512字节大小block的数量   IO Block: 是推荐的IO buf的大小
+
+文件夹的大小是4096(在我的机器上)
+```
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ll -d /
+drwxr-xr-x 25 root root 4096 5月  16 00:32 //
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ll -d ~
+drwxr-xr-x 36 myx myx 4096 7月  14 17:15 /home/myx/
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ll -d ~/APUE/
+drwxrwxr-x 5 myx myx 4096 7月  12 00:34 /home/myx/APUE//
+```
+
+对于符号链接，大小是原文件本身名字的长度(没有像C语言那样的末尾0)
+```
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ln -s empty_file empty_file_s
+myx@myx-virtual-machine:~/APUE/Chapter-04$ ll empty_file_s 
+lrwxrwxrwx 1 myx myx 10 7月  14 21:05 empty_file_s -> empty_file
+myx@myx-virtual-machine:~/APUE/Chapter-04$ stat empty_file_s 
+  File: empty_file_s -> empty_file
+  Size: 10              Blocks: 0          IO Block: 4096   symbolic link
+Device: 801h/2049d      Inode: 525361      Links: 1
+Access: (0777/lrwxrwxrwx)  Uid: ( 1000/     myx)   Gid: ( 1000/     myx)
+Access: 2024-07-14 21:05:22.105852283 +0800
+Modify: 2024-07-14 21:05:21.969854512 +0800
+Change: 2024-07-14 21:05:21.969854512 +0800
+ Birth: -
+```
+
+对于空洞文件，试过我的环境没有空洞文件的特性，暂时不研究了
+
+## 4.13 File Truncation
+
+```
+#include <unistd.h>
+int truncate(const char *pathname, off_t length);
+int ftrunction(fd, off_t length);
+返回值: 成功0 失败-1
+```
+作用把文件截断到length长度, 有些系统可以截断也可以增长
+```c
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(void)
+{
+    
+    if (truncate("test_file1", 5) < 0 )
+    {
+        perror("truncate fail 1");
+    }
+    if (truncate("test_file2", 15) < 0)
+    {
+        perror("truncate fail 2");
+    }
+
+    exit(0);
+}
+```
+
+```
+myx@myx-virtual-machine:~/APUE/Chapter-04$ cat test_file1
+12345myx@myx-virtual-machine:~/APUE/Chapter-04$ cat test_file2
+1234567890myx@myx-virtual-machine:~/APUE/Chapter-04$ ll test_file*
+-rw-rw-r-- 1 myx myx  5 7月  14 21:44 test_file1
+-rw-rw-r-- 1 myx myx 15 7月  14 21:44 test_file2
+myx@myx-virtual-machine:~/APUE/Chapter-04$ stat test_file*
+  File: test_file1
+  Size: 5               Blocks: 8          IO Block: 4096   regular file
+Device: 801h/2049d      Inode: 525368      Links: 1
+Access: (0664/-rw-rw-r--)  Uid: ( 1000/     myx)   Gid: ( 1000/     myx)
+Access: 2024-07-14 21:44:32.408115257 +0800
+Modify: 2024-07-14 21:44:30.184167899 +0800
+Change: 2024-07-14 21:44:30.184167899 +0800
+ Birth: -
+  File: test_file2
+  Size: 15              Blocks: 8          IO Block: 4096   regular file
+Device: 801h/2049d      Inode: 525369      Links: 1
+Access: (0664/-rw-rw-r--)  Uid: ( 1000/     myx)   Gid: ( 1000/     myx)
+Access: 2024-07-14 21:44:30.344164111 +0800
+Modify: 2024-07-14 21:44:30.184167899 +0800
+Change: 2024-07-14 21:44:30.184167899 +0800
+ Birth: -
+```
+![4_13_1.jpg](4_13_1.JPG "4_13_1.jpg")
+可以看到文件被截断和增长了，在增长的情况里默认填充的是'\0'空字符
